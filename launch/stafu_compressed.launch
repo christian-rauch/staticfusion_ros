@@ -1,0 +1,5 @@
+<launch>
+  <node name="StaticFusion" pkg="staticfusion_ros" type="stafu_node" required="true" clear_params="true" output="screen">
+        <param name="image_transport" type="str" value="compressed" />
+  </node>
+</launch>
