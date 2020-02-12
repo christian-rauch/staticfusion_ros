@@ -4,10 +4,28 @@
 #include <fstream>
 
 #include <ros/ros.h>
+
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <sensor_msgs/Image.h>
 #include <image_transport/subscriber_filter.h>
+
+#include <tf/tf.h>
+#include <tf/transform_listener.h>
+#include "tf/transform_datatypes.h"
+#include "tf_conversions/tf_eigen.h"
+//#include "tf/tf_eigen.h"
+#include "Eigen/Core"
+#include "Eigen/Geometry"
+#include <unsupported/Eigen/MatrixFunctions>
+
+using std::cout;
+using std::endl;
+
+typedef Eigen::Matrix<float, 6, 1> Vector6f;
+typedef Eigen::Matrix<float, 4, 4> Matrix4f;
+
+tf::TransformListener* tran;  //point to the listener in main() and used in callback()
 
 struct sf_conf_t {
     int im_count;
@@ -16,13 +34,31 @@ struct sf_conf_t {
     cv::Mat depth_full;
     cv::Mat color_full;
 
+    Eigen::Affine3d prev_camera_prior_pose;
+
+    ros::Time curr_frame_time;
+
     bool denseModel;
     bool modelInitialised;
+    bool is_prev_pose_valid;
 };
+
+namespace my{
+void transformEigenToTwist(const Eigen::Affine3d &e_d, Vector6f &t)
+{
+    Eigen::Affine3f e_f = e_d.cast<float>();
+    Matrix4f e_ = e_f.matrix();
+    Matrix4f log_trans = e_.log();
+    t(0) = log_trans(0,3); t(1) = log_trans(1,3); t(2) = log_trans(2,3);
+    t(3) = -log_trans(1,2); t(4) = log_trans(0,2); t(5) = -log_trans(0,1);
+}
+}
 
 void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::ImageConstPtr& msg_depth, StaticFusion &staticFusion, sf_conf_t &conf) {
 
-    // decode images
+    //Vector6f var_;
+    conf.curr_frame_time = ros::Time::now();
+
     conf.color_full = cv_bridge::toCvShare(msg_colour)->image;  // 8bit RGB image
     conf.depth_full = cv_bridge::toCvShare(msg_depth)->image;   // 16bit depth image
 
@@ -60,6 +96,8 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
     const cv::Mat_<float> grey = (0.299*rgb[0] + 0.587*rgb[1] + 0.114*rgb[2]) / 255;
     cv::cv2eigen(grey, staticFusion.intensityCurrent);
     cv::cv2eigen(conf.depth_full/1000, staticFusion.depthCurrent);
+
+    
 
     // initialise
     if (conf.im_count == 0) {
@@ -104,6 +142,48 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
         staticFusion.kb = 1.5f;
         conf.modelInitialised = true;
     }
+
+
+    //get prior informaton
+    tf::StampedTransform transform;
+       try{
+        // get transformation from tag_0 to camera, and it will transform point in camera to tag_0
+        tran->lookupTransform("/camera", "/tag_0", ros::Time(0), transform);
+        
+        // get current camera pose and transform it to Eigen
+        Eigen::Affine3d camera_prior_pose;
+        tf::Transform transform_(transform.getBasis(), transform.getOrigin());
+        tf::transformTFToEigen(transform_, camera_prior_pose);
+    
+        if(conf.is_prev_pose_valid){
+            staticFusion.camera_prior_pose_weight = 1.; 
+
+            // relative_camera_prior_pose will is transformation from previous camera pose to current camera pose
+            // in other words: relative_camera_prior_pose * prev_pose = curr_pose
+            Eigen::Affine3d relative_camera_prior_pose = camera_prior_pose * conf.prev_camera_prior_pose.inverse();
+
+            // cast to Matrix4f: same type as T_odometry
+            staticFusion.camera_prior_matrix = relative_camera_prior_pose.cast<float>().matrix();
+
+            //cout << conf.curr_frame_time << "\n";
+        }
+        else{
+            staticFusion.camera_prior_pose_weight = 0.f; 
+        }
+        conf.is_prev_pose_valid = true;
+
+        //if current pose is the same with previous pose, then there are no new pose.
+        if(conf.prev_camera_prior_pose.matrix() == camera_prior_pose.matrix()){
+            staticFusion.camera_prior_pose_weight = 0.f; 
+        }
+            
+        conf.prev_camera_prior_pose = camera_prior_pose;                         
+       }
+       catch (tf::TransformException ex){
+            ROS_ERROR("%s",ex.what());
+            staticFusion.camera_prior_pose_weight = 0.f;
+            conf.is_prev_pose_valid = false;
+       }
 
     staticFusion.reconstruction->getPredictedImages(staticFusion.depthPrediction, staticFusion.intensityPrediction);
     staticFusion.reconstruction->getFilteredDepth(conf.depth_full, staticFusion.depthCurrent);
@@ -152,6 +232,8 @@ int main(int argc, char** argv) {
     staticFusion.kc_Cauchy = 0.5f; //0.5
     staticFusion.kb = 1.5f; //1.5
     staticFusion.kz = 1.5f;
+    staticFusion.camera_prior_matrix = Matrix4f::Zero();
+    staticFusion.camera_prior_pose_weight = 0.f;
 
     sf_conf_t sf_conf;
 
@@ -166,6 +248,7 @@ int main(int argc, char** argv) {
     sf_conf.im_count = 0;
 
     sf_conf.res_factor = res_factor;
+    sf_conf.is_prev_pose_valid = false;
 
     // init ROS
     ros::init(argc, argv, "stafu");
@@ -174,6 +257,8 @@ int main(int argc, char** argv) {
 
     image_transport::SubscriberFilter sub_colour(it, "colour", 1);
     image_transport::SubscriberFilter sub_depth(it, "depth", 1);
+    tf::TransformListener tf_listener(ros::Duration(10));
+    tran=&tf_listener;
 
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ApproximateTimePolicy;
     message_filters::Synchronizer<ApproximateTimePolicy> sync(ApproximateTimePolicy(5), sub_colour, sub_depth);
