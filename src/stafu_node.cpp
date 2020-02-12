@@ -14,7 +14,6 @@
 #include <tf/transform_listener.h>
 #include "tf/transform_datatypes.h"
 #include "tf_conversions/tf_eigen.h"
-//#include "tf/tf_eigen.h"
 #include "Eigen/Core"
 #include "Eigen/Geometry"
 #include <unsupported/Eigen/MatrixFunctions>
@@ -56,7 +55,6 @@ void transformEigenToTwist(const Eigen::Affine3d &e_d, Vector6f &t)
 
 void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::ImageConstPtr& msg_depth, StaticFusion &staticFusion, sf_conf_t &conf) {
 
-    //Vector6f var_;
     conf.curr_frame_time = ros::Time::now();
 
     conf.color_full = cv_bridge::toCvShare(msg_colour)->image;  // 8bit RGB image
