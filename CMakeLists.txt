@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(staticfusion_ros)
 
+cmake_policy(SET CMP0028 NEW)
+
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -22,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(StaticFusion REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(MRPT 2 REQUIRED COMPONENTS poses obs)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
