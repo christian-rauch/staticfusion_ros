@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
     image_transport::SubscriberFilter sub_depth(it, "depth", 1);
 
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ApproximateTimePolicy;
-    message_filters::Synchronizer<ApproximateTimePolicy> sync(ApproximateTimePolicy(5), sub_colour, sub_depth);
+    message_filters::Synchronizer<ApproximateTimePolicy> sync(ApproximateTimePolicy(15), sub_colour, sub_depth);
 
     sync.registerCallback(boost::bind(&callback, _1, _2, staticFusion, sf_conf));
 
