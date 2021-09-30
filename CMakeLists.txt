@@ -26,6 +26,7 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(StaticFusion REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(MRPT 2 REQUIRED COMPONENTS poses obs)
+find_package(Pangolin 0.6 REQUIRED)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
