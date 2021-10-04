@@ -180,6 +180,10 @@ int main(int argc, char** argv) {
 
     sync.registerCallback(boost::bind(&callback, _1, _2, staticFusion, sf_conf));
 
+    // wait for single CameraInfo message to get intrinsics
+    std::cout << "waiting for 'sensor_msgs/CameraInfo' message on '" + ros::names::resolve("camera_info") + "'" << std::endl;
+    sensor_msgs::CameraInfo::ConstPtr ci = ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info", n);
+
     while(!pangolin::ShouldQuit()) {
         ros::spinOnce();
         staticFusion.updateGUI();
