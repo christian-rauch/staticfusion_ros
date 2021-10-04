@@ -131,8 +131,31 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
 }
 
 int main(int argc, char** argv) {
+    // init ROS
+    ros::init(argc, argv, "stafu");
+    ros::NodeHandle n;
+    image_transport::ImageTransport it(n);
 
-    unsigned int res_factor = 2;
+    image_transport::SubscriberFilter sub_colour(it, "colour", 1);
+    image_transport::SubscriberFilter sub_depth(it, "depth", 1);
+
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ApproximateTimePolicy;
+    message_filters::Synchronizer<ApproximateTimePolicy> sync(ApproximateTimePolicy(15), sub_colour, sub_depth);
+
+    // wait for single CameraInfo message to get intrinsics
+    std::cout << "waiting for 'sensor_msgs/CameraInfo' message on '" + ros::names::resolve("camera_info") + "'" << std::endl;
+    sensor_msgs::CameraInfo::ConstPtr camera_info = ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info", n);
+
+    const cv::Size source_dimensions(camera_info->width, camera_info->height);
+    // 'P' row-major 3x4 projection matrix: (fx, 0, cx, Tx, 0, fy, cy, Ty, 0, 0, 1, 0)
+    const Eigen::Vector2d src_f = {camera_info->P[0], camera_info->P[5]}; // focal length
+    const Eigen::Vector2d src_c = {camera_info->P[2], camera_info->P[6]}; // centre
+
+    Intrinsics::getInstance(src_f[0], src_f[1], src_c[0], src_c[1]);
+    Resolution::getInstance(source_dimensions.width, source_dimensions.height);
+
+    // initialise SF
+    unsigned int res_factor = 1;
     StaticFusion staticFusion(res_factor);
 
     //Flags
@@ -167,22 +190,8 @@ int main(int argc, char** argv) {
 
     sf_conf.res_factor = res_factor;
 
-    // init ROS
-    ros::init(argc, argv, "stafu");
-    ros::NodeHandle n;
-    image_transport::ImageTransport it(n);
-
-    image_transport::SubscriberFilter sub_colour(it, "colour", 1);
-    image_transport::SubscriberFilter sub_depth(it, "depth", 1);
-
-    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ApproximateTimePolicy;
-    message_filters::Synchronizer<ApproximateTimePolicy> sync(ApproximateTimePolicy(15), sub_colour, sub_depth);
-
+    // register callback function
     sync.registerCallback(boost::bind(&callback, _1, _2, staticFusion, sf_conf));
-
-    // wait for single CameraInfo message to get intrinsics
-    std::cout << "waiting for 'sensor_msgs/CameraInfo' message on '" + ros::names::resolve("camera_info") + "'" << std::endl;
-    sensor_msgs::CameraInfo::ConstPtr ci = ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info", n);
 
     while(!pangolin::ShouldQuit()) {
         ros::spinOnce();
