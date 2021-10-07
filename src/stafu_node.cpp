@@ -35,6 +35,8 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
     conf.color_full = cv_bridge::toCvCopy(msg_colour, "rgb8")->image;  // 8bit RGB image
     conf.depth_full = cv_bridge::toCvShare(msg_depth)->image;   // 16bit depth image
 
+    const uint64_t time_ns = msg_colour->header.stamp.toNSec();
+
     if(conf.color_full.size()!=conf.depth_full.size())
         throw std::runtime_error("resolution mismatch");
 
@@ -82,7 +84,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
 
         cv::eigen2cv(staticFusion.b_segm_perpixel, conf.weightedImage);
 
-        staticFusion.reconstruction->fuseFrame((unsigned char *) conf.color_full.data, (unsigned short *) conf.depth_full.data, (float *) conf.weightedImage.data, conf.im_count, &(staticFusion.T_odometry), 0, 1);
+        staticFusion.reconstruction->fuseFrame((unsigned char *) conf.color_full.data, (unsigned short *) conf.depth_full.data, (float *) conf.weightedImage.data, time_ns, &(staticFusion.T_odometry), 0, 1);
         staticFusion.reconstruction->uploadWeightAndClustersForVisualization((float *) conf.weightedImage.data, staticFusion.clusterAllocation[0], (unsigned short *) conf.depth_full.data);
     }
 
@@ -121,7 +123,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
 
     cv::eigen2cv(staticFusion.b_segm_perpixel, conf.weightedImage);
 
-    staticFusion.reconstruction->fuseFrame((unsigned char *) conf.color_full.data, (unsigned short *) conf.depth_full.data,  (float *) conf.weightedImage.data, conf.im_count, &(staticFusion.T_odometry), 0, 1);
+    staticFusion.reconstruction->fuseFrame((unsigned char *) conf.color_full.data, (unsigned short *) conf.depth_full.data,  (float *) conf.weightedImage.data, time_ns, &(staticFusion.T_odometry), 0, 1);
 
     staticFusion.reconstruction->uploadWeightAndClustersForVisualization((float *) conf.weightedImage.data, staticFusion.clusterAllocation[0], (unsigned short *) conf.depth_full.data);
 }
