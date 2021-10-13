@@ -8,6 +8,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <sensor_msgs/Image.h>
 #include <image_transport/subscriber_filter.h>
+#include <image_geometry/pinhole_camera_model.h>
 
 struct sf_conf_t {
     int im_count;
@@ -17,6 +18,7 @@ struct sf_conf_t {
 
     // centred ROI with aspect ratio of target dimensions
     cv::Rect crop_roi;
+    image_geometry::PinholeCameraModel camera_model;
 
     // scale of cropped dimensions = source / target
     double scale;
@@ -34,6 +36,11 @@ void callback(const sensor_msgs::ImageConstPtr& msg_colour, const sensor_msgs::I
     // decode images
     conf.color_full = cv_bridge::toCvCopy(msg_colour, "rgb8")->image;  // 8bit RGB image
     conf.depth_full = cv_bridge::toCvShare(msg_depth)->image;   // 16bit depth image
+
+    if (!conf.camera_model.distortionCoeffs().empty()) {
+      conf.camera_model.rectifyImage(conf.color_full, conf.color_full, cv::INTER_LINEAR);
+      conf.camera_model.rectifyImage(conf.depth_full, conf.depth_full, cv::INTER_NEAREST);
+    }
 
     const uint64_t time_ns = msg_colour->header.stamp.toNSec();
 
@@ -188,6 +195,7 @@ int main(int argc, char** argv) {
     // wait for single CameraInfo message to get intrinsics
     std::cout << "waiting for 'sensor_msgs/CameraInfo' message on '" + ros::names::resolve("camera_info") + "'" << std::endl;
     sensor_msgs::CameraInfo::ConstPtr camera_info = ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info", n);
+    sf_conf.camera_model.fromCameraInfo(camera_info);
 
     const cv::Size source_dimensions(camera_info->width, camera_info->height);
     // 'P' row-major 3x4 projection matrix: (fx, 0, cx, Tx, 0, fy, cy, Ty, 0, 0, 1, 0)
